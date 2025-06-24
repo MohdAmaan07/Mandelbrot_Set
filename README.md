@@ -8,12 +8,19 @@ Interactive Mandelbrot Set explorer built with Python and Pygame.
 ### ⚙️ Requirements
 
 * Python 3.7+
-* `pygame`
-* `numpy`
+* [`uv`](https://github.com/astral-sh/uv) (install via `pip install uv`)
+* `pygame`, `numpy` (declared in `pyproject.toml`)
 
-Install with:
+### 💻 Setup (Windows, Linux, macOS)
 
 ```bash
+uv venv
+# Activate virtual environment:
+# On Linux/macOS:
+source .venv/bin/activate
+# On Windows:
+.venv\Scripts\activate
+
 uv sync
 ```
 
