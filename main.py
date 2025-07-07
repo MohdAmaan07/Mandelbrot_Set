@@ -1,105 +1,99 @@
 import pygame
 import numpy as np
+from time import time
 
-def mandelbrot_set(width, height, max_iter, cx, cy, zoom):
-    re = np.linspace(cx - width / (2 * zoom), cx + width / (2 * zoom), width)
-    im = np.linspace(cy - height / (2 * zoom), cy + height / (2 * zoom), height)
-    re, im = np.meshgrid(re, im)
-    c = re + 1j * im
+def draw_mandelbrot(surface, width, height, max_iter, cx, cy, zoom):
+    re_vals = np.linspace(cx - width / (2 * zoom), cx + width / (2 * zoom), width)
+    px = pygame.surfarray.pixels3d(surface)
 
-    z = np.zeros_like(c)
-    div_iter = np.full(c.shape, max_iter, dtype=int)
-    mask = np.full(c.shape, True, dtype=bool)
+    for y in range(height):
+        im_val = cy + (y - height/2) / zoom
+        c = re_vals + 1j * im_val
+        z = np.zeros_like(c)
+        div_iter = np.full(c.shape, max_iter, dtype=np.int32)
+        mask = np.ones(c.shape, dtype=bool)
+  
+        for i in range(max_iter):
+            z[mask] = z[mask] * z[mask] + c[mask]
+            escaped = (z.real*z.real + z.imag*z.imag) > 4
+            div_now = escaped & mask
+            div_iter[div_now] = i
+            mask &= ~escaped
+            if not mask.any():
+                break
 
-    for i in range(max_iter):
-        z[mask] = z[mask] * z[mask] + c[mask]
-        escaped = z.real*z.real + z.imag*z.imag > 4
-        div_now = escaped & mask
-        div_iter[div_now] = i
-        mask &= ~escaped
-        if not mask.any():
-            break
+        r = (div_iter % 8) * 32
+        g = (div_iter % 16) * 16
+        b = (div_iter % 32) * 8
         
-    return div_iter
+        inside = div_iter >= max_iter
+        r[inside] = g[inside] = b[inside] = 0
+        
+        px[:, y, 0] = r
+        px[:, y, 1] = g
+        px[:, y, 2] = b
+        
+        if y % 16 == 0:
+            pygame.display.update(pygame.Rect(0, y, width, min(16, height - y)))
 
-def draw(surface, width, height, max_iter, cx, cy, zoom):
-    div_iter = mandelbrot_set(width, height, max_iter, cx, cy, zoom)
-    colors = np.zeros((height, width, 3), dtype=np.uint8)
+    pygame.display.update()
+    del px
 
-    mask = div_iter < max_iter
-    colors[..., 0] = (div_iter % 8) * 32
-    colors[..., 1] = (div_iter % 16) * 16
-    colors[..., 2] = (div_iter % 32) * 8
-    colors[~mask] = (0, 0, 0)
-
-    pygame.surfarray.blit_array(surface, np.transpose(colors, (1, 0, 2)))
 
 def main():
     width, height = 800, 600
-    pygame.display.init()
+    pygame.init()
     screen = pygame.display.set_mode((width, height))
-    pygame.display.set_caption("Mandelbrot Set Visualization")
-
-    surface = pygame.Surface((width, height))
-
+    pygame.display.set_caption("Mandelbrot Interactive")
     cx, cy = -0.5, 0.0
-    zoom = 200
+    zoom = 200.0
     base_iter = 100
 
-    clock = pygame.time.Clock()
     dragging = False
-    drag_start_pos = (0, 0)
-    drag_start_center = (cx, cy)
-
+    drag_start = (0, 0)
+    center_start = (cx, cy)
     redraw = True
+    clock = pygame.time.Clock()
+
     running = True
+    last_time = time()
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     dragging = True
-                    drag_start_pos = event.pos
-                    drag_start_center = (cx, cy)
-                elif event.button == 4:
-                    mouse_x, mouse_y = event.pos
-                    mx = cx + (mouse_x - width / 2) / zoom
-                    my = cy + (mouse_y - height / 2) / zoom
-                    zoom *= 1.2
-                    cx = mx - (mouse_x - width / 2) / zoom
-                    cy = my - (mouse_y - height / 2) / zoom
+                    drag_start = event.pos
+                    center_start = (cx, cy)
+                elif event.button in (4, 5):
+                    mx, my = event.pos
+                    wx = cx + (mx - width/2)/zoom
+                    wy = cy + (my - height/2)/zoom
+                    factor = 1.2 if event.button == 4 else 1/1.2
+                    zoom *= factor
+                    cx = wx - (mx - width/2)/zoom
+                    cy = wy - (my - height/2)/zoom
                     redraw = True
-                elif event.button == 5:
-                    mouse_x, mouse_y = event.pos
-                    mx = cx + (mouse_x - width / 2) / zoom
-                    my = cy + (mouse_y - height / 2) / zoom
-                    zoom /= 1.2
-                    cx = mx - (mouse_x - width / 2) / zoom
-                    cy = my - (mouse_y - height / 2) / zoom
-                    redraw = True
-
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:
-                    dragging = False
-
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                dragging = False
             elif event.type == pygame.MOUSEMOTION and dragging:
-                dx = event.pos[0] - drag_start_pos[0]
-                dy = event.pos[1] - drag_start_pos[1]
-                cx = drag_start_center[0] - dx / zoom
-                cy = drag_start_center[1] - dy / zoom
+                dx = event.pos[0] - drag_start[0]
+                dy = event.pos[1] - drag_start[1]
+                cx = center_start[0] - dx/zoom
+                cy = center_start[1] - dy/zoom
                 redraw = True
-
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-
-        if redraw:
+                elif event.key == pygame.K_SPACE:
+                    cx, cy = -0.5, 0.0
+                    zoom = 200.0
+                    redraw = True
+        if redraw and time() - last_time > 0.05:
+            last_time = time()
             max_iter = int(base_iter + np.log(zoom) * 20)
-            draw(surface, width, height, max_iter, cx, cy, zoom)
-            screen.blit(surface, (0, 0))
-            pygame.display.flip()
+            draw_mandelbrot(screen, width, height, max_iter, cx, cy, zoom)
             redraw = False
 
         clock.tick(60)
